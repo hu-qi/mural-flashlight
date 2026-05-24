@@ -42,12 +42,34 @@ body {
   cursor: none;
 }
 
+.camera-video {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 11;
+  width: 180px;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgb(255 234 193 / 20%);
+  border-radius: 16px;
+  background: #050504;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 35%);
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(-1);
+  transition: opacity 180ms ease;
+}
+
+.camera-video.is-active {
+  opacity: 0.72;
+}
+
 .hud {
   position: fixed;
   top: 24px;
   left: 24px;
   z-index: 10;
-  width: min(360px, calc(100vw - 48px));
+  width: min(380px, calc(100vw - 48px));
   padding: 18px;
   border: 1px solid rgb(255 234 193 / 18%);
   border-radius: 22px;
@@ -77,6 +99,38 @@ body {
   color: rgb(247 234 209 / 76%);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.mode-row {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid rgb(255 204 124 / 42%);
+  border-radius: 999px;
+  background: rgb(255 189 101 / 16%);
+  color: #ffe8bd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+#tracking-status {
+  color: rgb(247 234 209 / 72%);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 label {
@@ -115,8 +169,19 @@ input[type='range'] {
     font-size: 13px;
   }
 
+  .mode-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
   label {
     grid-template-columns: 60px 1fr;
     margin-top: 8px;
+  }
+
+  .camera-video {
+    right: 14px;
+    bottom: 210px;
+    width: 140px;
   }
 }
