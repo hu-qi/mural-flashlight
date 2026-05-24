@@ -8,6 +8,16 @@ type Building = {
   scale: number
 }
 
+const BUILDINGS: Building[] = [
+  { x: 0.08, y: 0.5, width: 0.12, floors: 2, scale: 1.12 },
+  { x: 0.22, y: 0.42, width: 0.16, floors: 3, scale: 1.2 },
+  { x: 0.43, y: 0.39, width: 0.18, floors: 3, scale: 1.28 },
+  { x: 0.68, y: 0.46, width: 0.14, floors: 2, scale: 1.05 },
+  { x: 0.86, y: 0.5, width: 0.12, floors: 3, scale: 1.1 },
+  { x: 0.14, y: 0.76, width: 0.11, floors: 2, scale: 0.92 },
+  { x: 0.74, y: 0.76, width: 0.13, floors: 2, scale: 0.95 },
+]
+
 export class MuralRenderer {
   private readonly context: CanvasRenderingContext2D
   private readonly monoLayer = document.createElement('canvas')
@@ -30,16 +40,6 @@ export class MuralRenderer {
     visible: 1,
     targetVisible: 1,
   }
-
-  private readonly buildings: Building[] = [
-    { x: 0.08, y: 0.5, width: 0.12, floors: 2, scale: 1.12 },
-    { x: 0.22, y: 0.42, width: 0.16, floors: 3, scale: 1.2 },
-    { x: 0.43, y: 0.39, width: 0.18, floors: 3, scale: 1.28 },
-    { x: 0.68, y: 0.46, width: 0.14, floors: 2, scale: 1.05 },
-    { x: 0.86, y: 0.5, width: 0.12, floors: 3, scale: 1.1 },
-    { x: 0.14, y: 0.76, width: 0.11, floors: 2, scale: 0.92 },
-    { x: 0.74, y: 0.76, width: 0.13, floors: 2, scale: 0.95 },
-  ]
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d', { alpha: false })
@@ -90,7 +90,7 @@ export class MuralRenderer {
     this.lastTrackingPoint = point
 
     if (!point.active) {
-      this.light.targetVisible = 0.2
+      this.light.targetVisible = this.getInactiveVisibility(point)
       return
     }
 
@@ -129,6 +129,13 @@ export class MuralRenderer {
     this.drawOverlay(this.context, width, height)
   }
 
+  private getInactiveVisibility(point: TrackingPoint) {
+    if (point.activeReason === 'waiting-for-pinch') return 0
+    if (point.activeReason === 'hand-not-found') return 0.08
+    if (point.source === 'mediapipe-hand') return 0
+    return 0.2
+  }
+
   private rebuildLayers(width: number, height: number) {
     this.monoContext.clearRect(0, 0, width, height)
     this.colorContext.clearRect(0, 0, width, height)
@@ -148,7 +155,7 @@ export class MuralRenderer {
 
     this.drawDistantRoofs(ctx, width, height, false)
     this.drawRiver(ctx, width, height, false)
-    this.buildings.forEach((building, index) => this.drawPagoda(ctx, width, height, building, false, index))
+    BUILDINGS.forEach((building, index) => this.drawPagoda(ctx, width, height, building, false, index))
     this.drawBridge(ctx, width, height, false)
     this.drawPeopleAndLanterns(ctx, width, height, false)
     this.drawInkTexture(ctx, width, height)
@@ -172,7 +179,7 @@ export class MuralRenderer {
 
     this.drawDistantRoofs(ctx, width, height, true)
     this.drawRiver(ctx, width, height, true)
-    this.buildings.forEach((building, index) => this.drawPagoda(ctx, width, height, building, true, index))
+    BUILDINGS.forEach((building, index) => this.drawPagoda(ctx, width, height, building, true, index))
     this.drawBridge(ctx, width, height, true)
     this.drawPeopleAndLanterns(ctx, width, height, true)
     this.drawColoredHighlights(ctx, width, height)
