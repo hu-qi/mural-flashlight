@@ -14,6 +14,8 @@ const HAND_WASM_URLS = [
 ]
 const HAND_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+const PINCH_ON_DISTANCE = 0.065
+const PINCH_OFF_DISTANCE = 0.09
 
 export class MediaPipeHandInput implements TrackingInput {
   private pointCallback: TrackingPointCallback = () => undefined
@@ -25,6 +27,7 @@ export class MediaPipeHandInput implements TrackingInput {
   private starting = false
   private lastVideoTime = -1
   private lastHandSeenAt = 0
+  private pinchActive = false
   private readonly smoother = new PointSmoother(0.38)
 
   constructor(
@@ -58,9 +61,10 @@ export class MediaPipeHandInput implements TrackingInput {
       this.enabled = true
       this.lastVideoTime = -1
       this.lastHandSeenAt = performance.now()
+      this.pinchActive = false
       this.smoother.reset()
       this.video.classList.add('is-active')
-      this.statusCallback('Show your index finger')
+      this.statusCallback('Pinch thumb + index to turn flashlight on')
       this.runLoop()
     } catch (error) {
       console.error(error)
@@ -73,6 +77,7 @@ export class MediaPipeHandInput implements TrackingInput {
 
   stop() {
     this.enabled = false
+    this.pinchActive = false
     this.smoother.reset()
 
     if (this.animationId) {
@@ -94,6 +99,8 @@ export class MediaPipeHandInput implements TrackingInput {
       active: false,
       source: 'mediapipe-hand',
       label: 'hand tracking stopped',
+      gesture: 'none',
+      activeReason: 'stopped',
     })
   }
 
@@ -144,6 +151,7 @@ export class MediaPipeHandInput implements TrackingInput {
 
     if (performance.now() - this.lastHandSeenAt > 700) {
       this.statusCallback('Hand not found')
+      this.pinchActive = false
       this.pointCallback({
         x: 0,
         y: 0,
@@ -151,6 +159,8 @@ export class MediaPipeHandInput implements TrackingInput {
         active: false,
         source: 'mediapipe-hand',
         label: 'hand not found',
+        gesture: 'none',
+        activeReason: 'hand-not-found',
       })
     }
 
@@ -161,9 +171,12 @@ export class MediaPipeHandInput implements TrackingInput {
     const landmarks = result.landmarks[0]
     if (!landmarks) return
 
+    const thumbTip = landmarks[4]
     const indexTip = landmarks[8]
-    if (!indexTip) return
+    if (!thumbTip || !indexTip) return
 
+    const pinchDistance = this.getNormalizedDistance(thumbTip, indexTip)
+    const isPinching = this.updatePinchState(pinchDistance)
     const point = this.mapIndexTip(indexTip)
     const stabilizedPoint = this.smoother.next(point)
 
@@ -171,12 +184,32 @@ export class MediaPipeHandInput implements TrackingInput {
     this.pointCallback({
       x: stabilizedPoint.x,
       y: stabilizedPoint.y,
-      confidence: 1,
-      active: true,
+      confidence: Math.max(0, Math.min(1, 1 - pinchDistance / 0.18)),
+      active: isPinching,
       source: 'mediapipe-hand',
-      label: 'hand index fingertip',
+      label: isPinching ? 'pinch flashlight on' : 'pinch to turn on',
+      gesture: isPinching ? 'pinch' : 'none',
+      activeReason: isPinching ? 'pinch-active' : 'waiting-for-pinch',
     })
-    this.statusCallback(`Hand tracking: index fingertip ${Math.round(stabilizedPoint.x)}, ${Math.round(stabilizedPoint.y)}`)
+
+    const distanceLabel = pinchDistance.toFixed(3)
+    this.statusCallback(isPinching ? `Pinch ON · ${distanceLabel}` : `Pinch thumb + index to turn on · ${distanceLabel}`)
+  }
+
+  private updatePinchState(distance: number) {
+    if (!this.pinchActive && distance < PINCH_ON_DISTANCE) {
+      this.pinchActive = true
+    }
+
+    if (this.pinchActive && distance > PINCH_OFF_DISTANCE) {
+      this.pinchActive = false
+    }
+
+    return this.pinchActive
+  }
+
+  private getNormalizedDistance(a: NormalizedLandmark, b: NormalizedLandmark) {
+    return Math.hypot(a.x - b.x, a.y - b.y)
   }
 
   private mapIndexTip(landmark: NormalizedLandmark) {
