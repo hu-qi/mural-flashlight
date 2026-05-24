@@ -8,7 +8,7 @@ type ImagePlacement = {
   dh: number
 }
 
-type RuntimeRenderer = MuralRenderer & {
+type RuntimeRenderer = {
   canvas: HTMLCanvasElement
   context: CanvasRenderingContext2D
   layersDirty: boolean
@@ -62,11 +62,21 @@ export function installImportedMuralView(renderer: MuralRenderer) {
     drawMiniMap(runtime, state)
   }
 
-  runtime.drawImportedMonoLayer = (ctx, image, width, height) => {
+  runtime.drawImportedMonoLayer = (
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    width: number,
+    height: number,
+  ) => {
     drawImportedMonoLayer(runtime, state, ctx, image, width, height)
   }
 
-  runtime.drawImportedColorLayer = (ctx, image, width, height) => {
+  runtime.drawImportedColorLayer = (
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    width: number,
+    height: number,
+  ) => {
     drawImportedColorLayer(state, ctx, image, width, height)
   }
 
