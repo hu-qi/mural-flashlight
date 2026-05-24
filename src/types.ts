@@ -1,5 +1,7 @@
 export type TrackingSource = 'pointer' | 'mediapipe-hand' | 'apriltag'
 
+export type TrackingGesture = 'none' | 'pinch'
+
 export type TrackingPoint = {
   x: number
   y: number
@@ -7,6 +9,8 @@ export type TrackingPoint = {
   active: boolean
   source: TrackingSource
   label?: string
+  gesture?: TrackingGesture
+  activeReason?: string
 }
 
 export type LightState = {
