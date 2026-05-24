@@ -1,5 +1,5 @@
 import './styles.css'
-import { DEFAULT_MURAL_DATA_URL, DEFAULT_MURAL_NAME } from './assets/defaultMural'
+import { DEFAULT_MURAL_URL, DEFAULT_MURAL_NAME } from './assets/defaultMural'
 import { PointerInput } from './inputs/PointerInput'
 import { MediaPipeHandInput } from './inputs/MediaPipeHandInput'
 import { CanvasMapper } from './mapping/CanvasMapper'
@@ -127,7 +127,7 @@ async function enableHandMode() {
 
 async function loadDefaultMural() {
   try {
-    await renderer.setDefaultImage(DEFAULT_MURAL_DATA_URL)
+    await renderer.setDefaultImage(DEFAULT_MURAL_URL)
     trackingStatus.textContent = `${DEFAULT_MURAL_NAME} loaded. Hold near an edge to navigate.`
   } catch (error) {
     console.error(error)
