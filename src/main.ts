@@ -1,3 +1,9 @@
+import {
+  FilesetResolver,
+  HandLandmarker,
+  type HandLandmarkerResult,
+  type NormalizedLandmark,
+} from '@mediapipe/tasks-vision'
 import './styles.css'
 
 type LightState = {
@@ -12,7 +18,7 @@ type LightState = {
   targetVisible: number
 }
 
-type PointerSource = 'mouse' | 'touch' | 'pen'
+type InputSource = 'mouse' | 'touch' | 'pen' | 'hand'
 
 type Building = {
   x: number
@@ -22,6 +28,10 @@ type Building = {
   scale: number
 }
 
+const HAND_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm'
+const HAND_MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+
 const app = document.querySelector<HTMLDivElement>('#app')
 
 if (!app) {
@@ -30,13 +40,19 @@ if (!app) {
 
 app.innerHTML = `
   <main class="stage-shell">
+    <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
     <canvas id="mural-canvas" aria-label="Interactive mural flashlight demo"></canvas>
 
     <section class="hud" aria-label="Controls">
       <div>
-        <p class="eyebrow">Step 1 / Pointer Prototype</p>
+        <p class="eyebrow">Step 2 / MediaPipe Hands</p>
         <h1>Mural Flashlight</h1>
-        <p class="hint">Move your mouse or finger like a prop flashlight. The lit patch now reveals a clearly colored lantern-and-water layer.</p>
+        <p class="hint">Move the pointer, or start hand tracking and use your index fingertip to drive the flashlight.</p>
+      </div>
+
+      <div class="mode-row">
+        <button id="hand-toggle" type="button">Start hand tracking</button>
+        <span id="tracking-status">Pointer mode</span>
       </div>
 
       <label>
@@ -58,11 +74,14 @@ app.innerHTML = `
 `
 
 const canvas = document.querySelector<HTMLCanvasElement>('#mural-canvas')
+const video = document.querySelector<HTMLVideoElement>('#camera-video')
 const radiusInput = document.querySelector<HTMLInputElement>('#radius')
 const featherInput = document.querySelector<HTMLInputElement>('#feather')
 const intensityInput = document.querySelector<HTMLInputElement>('#intensity')
+const handToggle = document.querySelector<HTMLButtonElement>('#hand-toggle')
+const trackingStatus = document.querySelector<HTMLSpanElement>('#tracking-status')
 
-if (!canvas || !radiusInput || !featherInput || !intensityInput) {
+if (!canvas || !video || !radiusInput || !featherInput || !intensityInput || !handToggle || !trackingStatus) {
   throw new Error('Missing required UI elements')
 }
 
@@ -105,9 +124,17 @@ const buildings: Building[] = [
   { x: 0.74, y: 0.76, width: 0.13, floors: 2, scale: 0.95 },
 ]
 
-let lastPointerSource: PointerSource = 'mouse'
+let lastInputSource: InputSource = 'mouse'
 let frame = 0
 let layersDirty = true
+let handLandmarker: HandLandmarker | null = null
+let cameraStream: MediaStream | null = null
+let handTrackingEnabled = false
+let handTrackingStarting = false
+let lastVideoTime = -1
+let handAnimationId = 0
+let lastHandPoint: { x: number; y: number } | null = null
+let lastHandSeenAt = 0
 
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1
@@ -142,11 +169,153 @@ function getCanvasPoint(event: PointerEvent) {
 }
 
 function updatePointer(event: PointerEvent) {
+  if (handTrackingEnabled) return
+
   const point = getCanvasPoint(event)
-  lastPointerSource = event.pointerType === 'touch' || event.pointerType === 'pen' ? event.pointerType : 'mouse'
+  lastInputSource = event.pointerType === 'touch' || event.pointerType === 'pen' ? event.pointerType : 'mouse'
   light.targetX = point.x
   light.targetY = point.y
   light.targetVisible = 1
+}
+
+async function toggleHandTracking() {
+  if (handTrackingEnabled) {
+    stopHandTracking()
+    return
+  }
+
+  await startHandTracking()
+}
+
+async function startHandTracking() {
+  if (handTrackingStarting || handTrackingEnabled) return
+
+  handTrackingStarting = true
+  handToggle.disabled = true
+  trackingStatus.textContent = 'Loading MediaPipe...'
+
+  try {
+    if (!handLandmarker) {
+      const vision = await FilesetResolver.forVisionTasks(HAND_WASM_URL)
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: HAND_MODEL_URL,
+          delegate: 'GPU',
+        },
+        runningMode: 'VIDEO',
+        numHands: 1,
+        minHandDetectionConfidence: 0.55,
+        minHandPresenceConfidence: 0.55,
+        minTrackingConfidence: 0.55,
+      })
+    }
+
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    })
+
+    video.srcObject = cameraStream
+    await video.play()
+
+    handTrackingEnabled = true
+    lastInputSource = 'hand'
+    handToggle.textContent = 'Stop hand tracking'
+    trackingStatus.textContent = 'Show your index finger'
+    video.classList.add('is-active')
+    runHandTrackingLoop()
+  } catch (error) {
+    console.error(error)
+    trackingStatus.textContent = 'Camera or MediaPipe failed; pointer mode active'
+    stopHandTracking()
+  } finally {
+    handTrackingStarting = false
+    handToggle.disabled = false
+  }
+}
+
+function stopHandTracking() {
+  handTrackingEnabled = false
+  handToggle.textContent = 'Start hand tracking'
+  trackingStatus.textContent = 'Pointer mode'
+  video.classList.remove('is-active')
+  lastHandPoint = null
+
+  if (handAnimationId) {
+    cancelAnimationFrame(handAnimationId)
+    handAnimationId = 0
+  }
+
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop())
+    cameraStream = null
+  }
+
+  video.srcObject = null
+  light.targetVisible = 1
+}
+
+function runHandTrackingLoop() {
+  if (!handTrackingEnabled || !handLandmarker) return
+
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime
+    const result = handLandmarker.detectForVideo(video, performance.now())
+    updateHandPoint(result)
+  }
+
+  if (performance.now() - lastHandSeenAt > 700) {
+    trackingStatus.textContent = 'Hand not found'
+    light.targetVisible = 0.2
+    lastHandPoint = null
+  }
+
+  handAnimationId = requestAnimationFrame(runHandTrackingLoop)
+}
+
+function updateHandPoint(result: HandLandmarkerResult) {
+  const landmarks = result.landmarks[0]
+
+  if (!landmarks) return
+
+  const indexTip = landmarks[8]
+
+  if (!indexTip) return
+
+  const point = mapHandLandmarkToCanvas(indexTip)
+  const stabilizedPoint = stabilizeHandPoint(point)
+
+  lastInputSource = 'hand'
+  lastHandSeenAt = performance.now()
+  light.targetX = stabilizedPoint.x
+  light.targetY = stabilizedPoint.y
+  light.targetVisible = 1
+  trackingStatus.textContent = `Hand tracking: index fingertip ${Math.round(stabilizedPoint.x)}, ${Math.round(stabilizedPoint.y)}`
+}
+
+function mapHandLandmarkToCanvas(landmark: NormalizedLandmark) {
+  return {
+    x: (1 - landmark.x) * canvas.clientWidth,
+    y: landmark.y * canvas.clientHeight,
+  }
+}
+
+function stabilizeHandPoint(point: { x: number; y: number }) {
+  if (!lastHandPoint) {
+    lastHandPoint = point
+    return point
+  }
+
+  lastHandPoint = {
+    x: lastHandPoint.x + (point.x - lastHandPoint.x) * 0.38,
+    y: lastHandPoint.y + (point.y - lastHandPoint.y) * 0.38,
+  }
+
+  return lastHandPoint
 }
 
 function rebuildLayers(width: number, height: number) {
@@ -493,6 +662,22 @@ function drawFlashlightGlow(ctx: CanvasRenderingContext2D) {
   ctx.restore()
 }
 
+function drawHandDebug(ctx: CanvasRenderingContext2D) {
+  if (!lastHandPoint || lastInputSource !== 'hand') return
+
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255, 238, 166, 0.9)'
+  ctx.fillStyle = 'rgba(255, 238, 166, 0.75)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.arc(lastHandPoint.x, lastHandPoint.y, 12, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(lastHandPoint.x, lastHandPoint.y, 3, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
 function drawOverlay(ctx: CanvasRenderingContext2D, width: number, height: number) {
   const vignette = ctx.createRadialGradient(width / 2, height * 0.52, height * 0.18, width / 2, height * 0.52, height * 0.86)
   vignette.addColorStop(0, 'rgba(0, 0, 0, 0)')
@@ -500,12 +685,12 @@ function drawOverlay(ctx: CanvasRenderingContext2D, width: number, height: numbe
   ctx.fillStyle = vignette
   ctx.fillRect(0, 0, width, height)
 
-  const label = lastPointerSource === 'touch' ? 'touch flashlight' : 'pointer flashlight'
+  const sourceLabel = lastInputSource === 'hand' ? 'hand index fingertip' : `${lastInputSource} flashlight`
   ctx.save()
   ctx.globalAlpha = 0.72
   ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
   ctx.fillStyle = '#f7ead1'
-  ctx.fillText(`${label}  x:${Math.round(light.x)} y:${Math.round(light.y)}`, 24, height - 24)
+  ctx.fillText(`${sourceLabel}  x:${Math.round(light.x)} y:${Math.round(light.y)}`, 24, height - 24)
   ctx.restore()
 }
 
@@ -538,6 +723,7 @@ function render() {
   context.drawImage(revealLayer, 0, 0, width, height)
 
   drawFlashlightGlow(context)
+  drawHandDebug(context)
   drawOverlay(context, width, height)
 
   requestAnimationFrame(render)
@@ -549,12 +735,16 @@ canvas.addEventListener('pointerdown', (event) => {
   updatePointer(event)
 })
 canvas.addEventListener('pointerleave', () => {
-  light.targetVisible = 0.2
+  if (!handTrackingEnabled) light.targetVisible = 0.2
 })
 canvas.addEventListener('pointerenter', () => {
-  light.targetVisible = 1
+  if (!handTrackingEnabled) light.targetVisible = 1
+})
+handToggle.addEventListener('click', () => {
+  void toggleHandTracking()
 })
 window.addEventListener('resize', resizeCanvas)
+window.addEventListener('beforeunload', stopHandTracking)
 
 resizeCanvas()
 render()
