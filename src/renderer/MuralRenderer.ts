@@ -70,6 +70,11 @@ export class MuralRenderer {
     this.layersDirty = true
   }
 
+  async setDefaultImage(dataUrl: string) {
+    this.importedColorImage = await this.loadImageFromUrl(dataUrl)
+    this.layersDirty = true
+  }
+
   resize() {
     const ratio = window.devicePixelRatio || 1
     const width = window.innerWidth
@@ -157,14 +162,18 @@ export class MuralRenderer {
     const url = URL.createObjectURL(file)
 
     try {
-      const image = new Image()
-      image.decoding = 'async'
-      image.src = url
-      await image.decode()
-      return image
+      return await this.loadImageFromUrl(url)
     } finally {
       URL.revokeObjectURL(url)
     }
+  }
+
+  private async loadImageFromUrl(url: string) {
+    const image = new Image()
+    image.decoding = 'async'
+    image.src = url
+    await image.decode()
+    return image
   }
 
   private rebuildLayers(width: number, height: number) {
