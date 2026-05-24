@@ -8,6 +8,13 @@ type Building = {
   scale: number
 }
 
+type ImagePlacement = {
+  dx: number
+  dy: number
+  dw: number
+  dh: number
+}
+
 const BUILDINGS: Building[] = [
   { x: 0.08, y: 0.5, width: 0.12, floors: 2, scale: 1.12 },
   { x: 0.22, y: 0.42, width: 0.16, floors: 3, scale: 1.2 },
@@ -166,7 +173,7 @@ export class MuralRenderer {
 
     if (this.importedColorImage) {
       this.drawImportedMonoLayer(this.monoContext, this.importedColorImage, width, height)
-      this.drawCoverImage(this.colorContext, this.importedColorImage, width, height)
+      this.drawImportedColorLayer(this.colorContext, this.importedColorImage, width, height)
     } else {
       this.drawMonochromeMural(this.monoContext, width, height)
       this.drawColorMural(this.colorContext, width, height)
@@ -176,14 +183,15 @@ export class MuralRenderer {
   }
 
   private drawImportedMonoLayer(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const placement = this.getContainPlacement(image, width, height)
     const tempCanvas = document.createElement('canvas')
-    tempCanvas.width = Math.max(1, Math.round(width))
-    tempCanvas.height = Math.max(1, Math.round(height))
+    tempCanvas.width = Math.max(1, Math.round(placement.dw))
+    tempCanvas.height = Math.max(1, Math.round(placement.dh))
 
     const tempContext = tempCanvas.getContext('2d')
     if (!tempContext) return
 
-    this.drawCoverImage(tempContext, image, tempCanvas.width, tempCanvas.height)
+    tempContext.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height)
 
     const source = tempContext.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
     const sourceData = source.data
@@ -224,29 +232,45 @@ export class MuralRenderer {
     tempContext.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
     tempContext.globalCompositeOperation = 'source-over'
 
-    ctx.fillStyle = '#eee6d8'
-    ctx.fillRect(0, 0, width, height)
-    ctx.drawImage(tempCanvas, 0, 0, width, height)
+    this.drawImportedBackdrop(ctx, width, height)
+    ctx.drawImage(tempCanvas, placement.dx, placement.dy, placement.dw, placement.dh)
     this.drawPaperTexture(ctx, width, height)
   }
 
-  private drawCoverImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+  private drawImportedColorLayer(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const placement = this.getContainPlacement(image, width, height)
+    this.drawImportedBackdrop(ctx, width, height)
+    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, placement.dx, placement.dy, placement.dw, placement.dh)
+  }
+
+  private drawImportedBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    const paper = ctx.createLinearGradient(0, 0, 0, height)
+    paper.addColorStop(0, '#f1eadc')
+    paper.addColorStop(0.5, '#e2d6c1')
+    paper.addColorStop(1, '#cfc0a6')
+    ctx.fillStyle = paper
+    ctx.fillRect(0, 0, width, height)
+  }
+
+  private getContainPlacement(image: HTMLImageElement, width: number, height: number): ImagePlacement {
     const imageRatio = image.naturalWidth / image.naturalHeight
     const canvasRatio = width / height
-    let sx = 0
-    let sy = 0
-    let sw = image.naturalWidth
-    let sh = image.naturalHeight
+
+    let dw = width
+    let dh = height
 
     if (imageRatio > canvasRatio) {
-      sw = image.naturalHeight * canvasRatio
-      sx = (image.naturalWidth - sw) / 2
+      dh = width / imageRatio
     } else {
-      sh = image.naturalWidth / canvasRatio
-      sy = (image.naturalHeight - sh) / 2
+      dw = height * imageRatio
     }
 
-    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height)
+    return {
+      dx: (width - dw) / 2,
+      dy: (height - dh) / 2,
+      dw,
+      dh,
+    }
   }
 
   private drawPaperTexture(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -509,7 +533,7 @@ export class MuralRenderer {
 
     for (let i = 0; i < 30; i += 1) {
       const x = width * (0.38 + ((i * 17) % 27) / 100)
-      const y = height * (0.46 + ((i * 11) % 22) / 100)
+      const y = width * 0 + height * (0.46 + ((i * 11) % 22) / 100)
       const radius = 18 + (i % 5) * 6
       const glow = ctx.createRadialGradient(x, y, 0, x, y, radius)
       glow.addColorStop(0, 'rgba(255, 235, 126, 0.98)')
