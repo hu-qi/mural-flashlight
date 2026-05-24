@@ -28,6 +28,7 @@ export class MuralRenderer {
   private readonly revealContext: CanvasRenderingContext2D
   private frame = 0
   private layersDirty = true
+  private importedColorImage: HTMLImageElement | null = null
   private lastTrackingPoint: TrackingPoint | null = null
   private readonly light: LightState = {
     x: window.innerWidth * 0.48,
@@ -55,6 +56,11 @@ export class MuralRenderer {
     this.monoContext = monoContext
     this.colorContext = colorContext
     this.revealContext = revealContext
+  }
+
+  async importColorImage(file: File) {
+    this.importedColorImage = await this.loadImageFromFile(file)
+    this.layersDirty = true
   }
 
   resize() {
@@ -136,13 +142,129 @@ export class MuralRenderer {
     return 0.2
   }
 
+  private async loadImageFromFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please import an image file')
+    }
+
+    const url = URL.createObjectURL(file)
+
+    try {
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = url
+      await image.decode()
+      return image
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
   private rebuildLayers(width: number, height: number) {
     this.monoContext.clearRect(0, 0, width, height)
     this.colorContext.clearRect(0, 0, width, height)
 
-    this.drawMonochromeMural(this.monoContext, width, height)
-    this.drawColorMural(this.colorContext, width, height)
+    if (this.importedColorImage) {
+      this.drawImportedMonoLayer(this.monoContext, this.importedColorImage, width, height)
+      this.drawCoverImage(this.colorContext, this.importedColorImage, width, height)
+    } else {
+      this.drawMonochromeMural(this.monoContext, width, height)
+      this.drawColorMural(this.colorContext, width, height)
+    }
+
     this.layersDirty = false
+  }
+
+  private drawImportedMonoLayer(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = Math.max(1, Math.round(width))
+    tempCanvas.height = Math.max(1, Math.round(height))
+
+    const tempContext = tempCanvas.getContext('2d')
+    if (!tempContext) return
+
+    this.drawCoverImage(tempContext, image, tempCanvas.width, tempCanvas.height)
+
+    const source = tempContext.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
+    const sourceData = source.data
+    const widthPx = tempCanvas.width
+    const heightPx = tempCanvas.height
+    const gray = new Float32Array(widthPx * heightPx)
+
+    for (let i = 0, pixel = 0; i < sourceData.length; i += 4, pixel += 1) {
+      gray[pixel] = sourceData[i] * 0.299 + sourceData[i + 1] * 0.587 + sourceData[i + 2] * 0.114
+    }
+
+    const output = tempContext.createImageData(widthPx, heightPx)
+    const outputData = output.data
+
+    for (let y = 0; y < heightPx; y += 1) {
+      for (let x = 0; x < widthPx; x += 1) {
+        const index = y * widthPx + x
+        const pixel = index * 4
+        const current = gray[index]
+        const left = gray[y * widthPx + Math.max(0, x - 1)]
+        const right = gray[y * widthPx + Math.min(widthPx - 1, x + 1)]
+        const top = gray[Math.max(0, y - 1) * widthPx + x]
+        const bottom = gray[Math.min(heightPx - 1, y + 1) * widthPx + x]
+        const edge = Math.min(255, Math.hypot(right - left, bottom - top) * 2.4)
+        const shade = 236 - (255 - current) * 0.16
+        const ink = Math.max(22, shade - edge * 1.25)
+
+        outputData[pixel] = ink
+        outputData[pixel + 1] = ink * 0.98
+        outputData[pixel + 2] = ink * 0.9
+        outputData[pixel + 3] = 255
+      }
+    }
+
+    tempContext.putImageData(output, 0, 0)
+    tempContext.globalCompositeOperation = 'multiply'
+    tempContext.fillStyle = 'rgba(78, 58, 38, 0.12)'
+    tempContext.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+    tempContext.globalCompositeOperation = 'source-over'
+
+    ctx.fillStyle = '#eee6d8'
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(tempCanvas, 0, 0, width, height)
+    this.drawPaperTexture(ctx, width, height)
+  }
+
+  private drawCoverImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const imageRatio = image.naturalWidth / image.naturalHeight
+    const canvasRatio = width / height
+    let sx = 0
+    let sy = 0
+    let sw = image.naturalWidth
+    let sh = image.naturalHeight
+
+    if (imageRatio > canvasRatio) {
+      sw = image.naturalHeight * canvasRatio
+      sx = (image.naturalWidth - sw) / 2
+    } else {
+      sh = image.naturalWidth / canvasRatio
+      sy = (image.naturalHeight - sh) / 2
+    }
+
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height)
+  }
+
+  private drawPaperTexture(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    ctx.save()
+    ctx.globalAlpha = 0.14
+    ctx.strokeStyle = '#6d5f4f'
+    ctx.lineWidth = 1
+
+    for (let i = 0; i < 110; i += 1) {
+      const x = ((i * 131) % width) + Math.sin(i * 2.7) * 8
+      const y = ((i * 73) % height) + Math.cos(i * 1.9) * 8
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x + 16 + (i % 5) * 9, y + Math.sin(i) * 7)
+      ctx.stroke()
+    }
+
+    ctx.restore()
   }
 
   private drawMonochromeMural(ctx: CanvasRenderingContext2D, width: number, height: number) {
