@@ -1,4 +1,5 @@
 import './styles.css'
+import { DEFAULT_MURAL_DATA_URL, DEFAULT_MURAL_NAME } from './assets/defaultMural'
 import { PointerInput } from './inputs/PointerInput'
 import { MediaPipeHandInput } from './inputs/MediaPipeHandInput'
 import { CanvasMapper } from './mapping/CanvasMapper'
@@ -35,12 +36,12 @@ app.innerHTML = `
       <div>
         <p class="eyebrow">Step 3 / Modular Tracking</p>
         <h1>Mural Flashlight</h1>
-        <p class="hint">Import your own long mural. Hold the flashlight near a screen edge to auto-navigate that direction; the minimap shows your global position.</p>
+        <p class="hint">The demo starts with a long mural. Hold the flashlight near a screen edge to auto-navigate that direction; the minimap shows your global position.</p>
       </div>
 
       <div class="mode-row">
         <button id="hand-toggle" type="button">Start hand tracking</button>
-        <span id="tracking-status">Pointer mode</span>
+        <span id="tracking-status">Loading default mural...</span>
       </div>
 
       <label>
@@ -124,6 +125,16 @@ async function enableHandMode() {
   }
 }
 
+async function loadDefaultMural() {
+  try {
+    await renderer.setDefaultImage(DEFAULT_MURAL_DATA_URL)
+    trackingStatus.textContent = `${DEFAULT_MURAL_NAME} loaded. Hold near an edge to navigate.`
+  } catch (error) {
+    console.error(error)
+    trackingStatus.textContent = 'Pointer mode'
+  }
+}
+
 async function importMural(file: File) {
   importMuralButton.disabled = true
   trackingStatus.textContent = 'Generating monochrome line-art layer...'
@@ -166,5 +177,6 @@ window.addEventListener('resize', resize)
 window.addEventListener('beforeunload', () => activeInput.stop())
 
 resize()
+void loadDefaultMural()
 void enablePointerMode()
 renderLoop()
