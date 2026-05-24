@@ -10,6 +10,10 @@ Interactive installation concept for cultural tourism: a flashlight illuminates 
 
 - Creative origin: [小橘 @zhangxiaojubtc — 互动装置设计：壁画手电筒，文旅新玩法！](https://x.com/zhangxiaojubtc/status/2058185976950952326)
 
+## Demo
+
+- Live: https://flashlight.huqi.host/
+
 ## Source
 
 - GitHub: https://github.com/hu-qi/mural-flashlight
