@@ -1,6 +1,14 @@
 # Mural Flashlight
 
-A browser-based interactive mural prototype. It simulates a handheld flashlight revealing a colored layer inside a monochrome ink mural.
+A browser-based interactive mural prototype that simulates a handheld flashlight revealing a colored layer inside a monochrome ink mural.
+
+![Mural Flashlight Screenshot](docs/screenshot.png)
+
+## Inspiration
+
+Interactive installation concept for cultural tourism: a flashlight illuminates a monochrome ink mural, revealing hidden colors beneath.
+
+- Creative origin: [小橘 @zhangxiaojubtc — 互动装置设计：壁画手电筒，文旅新玩法！](https://x.com/zhangxiaojubtc/status/2058185976950952326)
 
 ## Source
 
@@ -97,3 +105,7 @@ Because MediaPipe hand tracking needs camera access, use the HTTPS production UR
 1. Add gesture-based flashlight activation, for example pinch to turn on.
 2. Add an `AprilTagInput` adapter that emits the same `TrackingPoint` interface.
 3. Add four-point calibration for camera-to-screen coordinate mapping.
+
+## License
+
+[MIT](LICENSE)

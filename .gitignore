@@ -1,0 +1,8 @@
+node_modules
+dist
+.vercel
+.arts
+.codeartsdoer
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
