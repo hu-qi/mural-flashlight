@@ -2,6 +2,10 @@
 
 A browser-based interactive mural prototype. It simulates a handheld flashlight revealing a colored layer inside a monochrome ink mural.
 
+## Source
+
+- GitHub: https://github.com/hu-qi/mural-flashlight
+
 ## Step 1: pointer-driven reveal
 
 The demo renders a procedural mural in two layers:
