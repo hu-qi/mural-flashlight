@@ -8,6 +8,23 @@ type Building = {
   scale: number
 }
 
+type ImagePlacement = {
+  dx: number
+  dy: number
+  dw: number
+  dh: number
+}
+
+const BUILDINGS: Building[] = [
+  { x: 0.08, y: 0.5, width: 0.12, floors: 2, scale: 1.12 },
+  { x: 0.22, y: 0.42, width: 0.16, floors: 3, scale: 1.2 },
+  { x: 0.43, y: 0.39, width: 0.18, floors: 3, scale: 1.28 },
+  { x: 0.68, y: 0.46, width: 0.14, floors: 2, scale: 1.05 },
+  { x: 0.86, y: 0.5, width: 0.12, floors: 3, scale: 1.1 },
+  { x: 0.14, y: 0.76, width: 0.11, floors: 2, scale: 0.92 },
+  { x: 0.74, y: 0.76, width: 0.13, floors: 2, scale: 0.95 },
+]
+
 export class MuralRenderer {
   private readonly context: CanvasRenderingContext2D
   private readonly monoLayer = document.createElement('canvas')
@@ -18,6 +35,7 @@ export class MuralRenderer {
   private readonly revealContext: CanvasRenderingContext2D
   private frame = 0
   private layersDirty = true
+  private importedColorImage: HTMLImageElement | null = null
   private lastTrackingPoint: TrackingPoint | null = null
   private readonly light: LightState = {
     x: window.innerWidth * 0.48,
@@ -30,16 +48,6 @@ export class MuralRenderer {
     visible: 1,
     targetVisible: 1,
   }
-
-  private readonly buildings: Building[] = [
-    { x: 0.08, y: 0.5, width: 0.12, floors: 2, scale: 1.12 },
-    { x: 0.22, y: 0.42, width: 0.16, floors: 3, scale: 1.2 },
-    { x: 0.43, y: 0.39, width: 0.18, floors: 3, scale: 1.28 },
-    { x: 0.68, y: 0.46, width: 0.14, floors: 2, scale: 1.05 },
-    { x: 0.86, y: 0.5, width: 0.12, floors: 3, scale: 1.1 },
-    { x: 0.14, y: 0.76, width: 0.11, floors: 2, scale: 0.92 },
-    { x: 0.74, y: 0.76, width: 0.13, floors: 2, scale: 0.95 },
-  ]
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d', { alpha: false })
@@ -55,6 +63,16 @@ export class MuralRenderer {
     this.monoContext = monoContext
     this.colorContext = colorContext
     this.revealContext = revealContext
+  }
+
+  async importColorImage(file: File) {
+    this.importedColorImage = await this.loadImageFromFile(file)
+    this.layersDirty = true
+  }
+
+  async setDefaultImage(dataUrl: string) {
+    this.importedColorImage = await this.loadImageFromUrl(dataUrl)
+    this.layersDirty = true
   }
 
   resize() {
@@ -90,7 +108,7 @@ export class MuralRenderer {
     this.lastTrackingPoint = point
 
     if (!point.active) {
-      this.light.targetVisible = 0.2
+      this.light.targetVisible = this.getInactiveVisibility(point)
       return
     }
 
@@ -129,13 +147,157 @@ export class MuralRenderer {
     this.drawOverlay(this.context, width, height)
   }
 
+  private getInactiveVisibility(point: TrackingPoint) {
+    if (point.activeReason === 'waiting-for-pinch') return 0
+    if (point.activeReason === 'hand-not-found') return 0.08
+    if (point.source === 'mediapipe-hand') return 0
+    return 0.2
+  }
+
+  private async loadImageFromFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please import an image file')
+    }
+
+    const url = URL.createObjectURL(file)
+
+    try {
+      return await this.loadImageFromUrl(url)
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  private async loadImageFromUrl(url: string) {
+    const image = new Image()
+    image.decoding = 'async'
+    image.src = url
+    await image.decode()
+    return image
+  }
+
   private rebuildLayers(width: number, height: number) {
     this.monoContext.clearRect(0, 0, width, height)
     this.colorContext.clearRect(0, 0, width, height)
 
-    this.drawMonochromeMural(this.monoContext, width, height)
-    this.drawColorMural(this.colorContext, width, height)
+    if (this.importedColorImage) {
+      this.drawImportedMonoLayer(this.monoContext, this.importedColorImage, width, height)
+      this.drawImportedColorLayer(this.colorContext, this.importedColorImage, width, height)
+    } else {
+      this.drawMonochromeMural(this.monoContext, width, height)
+      this.drawColorMural(this.colorContext, width, height)
+    }
+
     this.layersDirty = false
+  }
+
+  private drawImportedMonoLayer(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const placement = this.getContainPlacement(image, width, height)
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = Math.max(1, Math.round(placement.dw))
+    tempCanvas.height = Math.max(1, Math.round(placement.dh))
+
+    const tempContext = tempCanvas.getContext('2d')
+    if (!tempContext) return
+
+    tempContext.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height)
+
+    const source = tempContext.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
+    const sourceData = source.data
+    const widthPx = tempCanvas.width
+    const heightPx = tempCanvas.height
+    const gray = new Float32Array(widthPx * heightPx)
+
+    for (let i = 0, pixel = 0; i < sourceData.length; i += 4, pixel += 1) {
+      gray[pixel] = sourceData[i] * 0.299 + sourceData[i + 1] * 0.587 + sourceData[i + 2] * 0.114
+    }
+
+    const output = tempContext.createImageData(widthPx, heightPx)
+    const outputData = output.data
+
+    for (let y = 0; y < heightPx; y += 1) {
+      for (let x = 0; x < widthPx; x += 1) {
+        const index = y * widthPx + x
+        const pixel = index * 4
+        const current = gray[index]
+        const left = gray[y * widthPx + Math.max(0, x - 1)]
+        const right = gray[y * widthPx + Math.min(widthPx - 1, x + 1)]
+        const top = gray[Math.max(0, y - 1) * widthPx + x]
+        const bottom = gray[Math.min(heightPx - 1, y + 1) * widthPx + x]
+        const edge = Math.min(255, Math.hypot(right - left, bottom - top) * 2.4)
+        const shade = 236 - (255 - current) * 0.16
+        const ink = Math.max(22, shade - edge * 1.25)
+
+        outputData[pixel] = ink
+        outputData[pixel + 1] = ink * 0.98
+        outputData[pixel + 2] = ink * 0.9
+        outputData[pixel + 3] = 255
+      }
+    }
+
+    tempContext.putImageData(output, 0, 0)
+    tempContext.globalCompositeOperation = 'multiply'
+    tempContext.fillStyle = 'rgba(78, 58, 38, 0.12)'
+    tempContext.fillRect(0, 0, tempCanvas.width, tempCanvas.height)
+    tempContext.globalCompositeOperation = 'source-over'
+
+    this.drawImportedBackdrop(ctx, width, height)
+    ctx.drawImage(tempCanvas, placement.dx, placement.dy, placement.dw, placement.dh)
+    this.drawPaperTexture(ctx, width, height)
+  }
+
+  private drawImportedColorLayer(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+    const placement = this.getContainPlacement(image, width, height)
+    this.drawImportedBackdrop(ctx, width, height)
+    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, placement.dx, placement.dy, placement.dw, placement.dh)
+  }
+
+  private drawImportedBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    const paper = ctx.createLinearGradient(0, 0, 0, height)
+    paper.addColorStop(0, '#f1eadc')
+    paper.addColorStop(0.5, '#e2d6c1')
+    paper.addColorStop(1, '#cfc0a6')
+    ctx.fillStyle = paper
+    ctx.fillRect(0, 0, width, height)
+  }
+
+  private getContainPlacement(image: HTMLImageElement, width: number, height: number): ImagePlacement {
+    const imageRatio = image.naturalWidth / image.naturalHeight
+    const canvasRatio = width / height
+
+    let dw = width
+    let dh = height
+
+    if (imageRatio > canvasRatio) {
+      dh = width / imageRatio
+    } else {
+      dw = height * imageRatio
+    }
+
+    return {
+      dx: (width - dw) / 2,
+      dy: (height - dh) / 2,
+      dw,
+      dh,
+    }
+  }
+
+  private drawPaperTexture(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    ctx.save()
+    ctx.globalAlpha = 0.14
+    ctx.strokeStyle = '#6d5f4f'
+    ctx.lineWidth = 1
+
+    for (let i = 0; i < 110; i += 1) {
+      const x = ((i * 131) % width) + Math.sin(i * 2.7) * 8
+      const y = ((i * 73) % height) + Math.cos(i * 1.9) * 8
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x + 16 + (i % 5) * 9, y + Math.sin(i) * 7)
+      ctx.stroke()
+    }
+
+    ctx.restore()
   }
 
   private drawMonochromeMural(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -148,7 +310,7 @@ export class MuralRenderer {
 
     this.drawDistantRoofs(ctx, width, height, false)
     this.drawRiver(ctx, width, height, false)
-    this.buildings.forEach((building, index) => this.drawPagoda(ctx, width, height, building, false, index))
+    BUILDINGS.forEach((building, index) => this.drawPagoda(ctx, width, height, building, false, index))
     this.drawBridge(ctx, width, height, false)
     this.drawPeopleAndLanterns(ctx, width, height, false)
     this.drawInkTexture(ctx, width, height)
@@ -172,7 +334,7 @@ export class MuralRenderer {
 
     this.drawDistantRoofs(ctx, width, height, true)
     this.drawRiver(ctx, width, height, true)
-    this.buildings.forEach((building, index) => this.drawPagoda(ctx, width, height, building, true, index))
+    BUILDINGS.forEach((building, index) => this.drawPagoda(ctx, width, height, building, true, index))
     this.drawBridge(ctx, width, height, true)
     this.drawPeopleAndLanterns(ctx, width, height, true)
     this.drawColoredHighlights(ctx, width, height)
@@ -380,7 +542,7 @@ export class MuralRenderer {
 
     for (let i = 0; i < 30; i += 1) {
       const x = width * (0.38 + ((i * 17) % 27) / 100)
-      const y = height * (0.46 + ((i * 11) % 22) / 100)
+      const y = width * 0 + height * (0.46 + ((i * 11) % 22) / 100)
       const radius = 18 + (i % 5) * 6
       const glow = ctx.createRadialGradient(x, y, 0, x, y, radius)
       glow.addColorStop(0, 'rgba(255, 235, 126, 0.98)')

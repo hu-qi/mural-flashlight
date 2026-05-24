@@ -1,7 +1,9 @@
 import './styles.css'
+import { DEFAULT_MURAL_URL, DEFAULT_MURAL_NAME } from './assets/defaultMural'
 import { PointerInput } from './inputs/PointerInput'
 import { MediaPipeHandInput } from './inputs/MediaPipeHandInput'
 import { CanvasMapper } from './mapping/CanvasMapper'
+import { installImportedMuralView } from './renderer/importedMuralView'
 import { MuralRenderer } from './renderer/MuralRenderer'
 import type { TrackingInput, TrackingPoint } from './types'
 
@@ -19,9 +21,13 @@ const app = queryRequired<HTMLDivElement>('#app')
 
 app.innerHTML = `
   <main class="stage-shell">
-    <a class="source-link" href="https://github.com/hu-qi/mural-flashlight" target="_blank" rel="noreferrer">
-      Source ↗
-    </a>
+    <div class="top-actions" aria-label="Project actions">
+      <button id="import-mural" class="top-action-button" type="button">Import mural</button>
+      <a class="top-action-button" href="https://github.com/hu-qi/mural-flashlight" target="_blank" rel="noreferrer">
+        Source ↗
+      </a>
+    </div>
+    <input id="mural-file" class="visually-hidden" type="file" accept="image/*" />
 
     <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
     <canvas id="mural-canvas" aria-label="Interactive mural flashlight demo"></canvas>
@@ -30,12 +36,12 @@ app.innerHTML = `
       <div>
         <p class="eyebrow">Step 3 / Modular Tracking</p>
         <h1>Mural Flashlight</h1>
-        <p class="hint">Renderer, Input, and Mapper are now separate. Pointer and MediaPipe Hands both feed the same tracking point pipeline.</p>
+        <p class="hint">The demo starts with a long mural. Hold the flashlight near a screen edge to auto-navigate that direction; the minimap shows your global position.</p>
       </div>
 
       <div class="mode-row">
         <button id="hand-toggle" type="button">Start hand tracking</button>
-        <span id="tracking-status">Pointer mode</span>
+        <span id="tracking-status">Loading default mural...</span>
       </div>
 
       <label>
@@ -63,9 +69,12 @@ const featherInput = queryRequired<HTMLInputElement>('#feather')
 const intensityInput = queryRequired<HTMLInputElement>('#intensity')
 const handToggle = queryRequired<HTMLButtonElement>('#hand-toggle')
 const trackingStatus = queryRequired<HTMLSpanElement>('#tracking-status')
+const importMuralButton = queryRequired<HTMLButtonElement>('#import-mural')
+const muralFileInput = queryRequired<HTMLInputElement>('#mural-file')
 
 const mapper = new CanvasMapper(canvas)
 const renderer = new MuralRenderer(canvas)
+installImportedMuralView(renderer)
 const pointerInput = new PointerInput(canvas, mapper)
 const handInput = new MediaPipeHandInput(video, mapper)
 let activeInput: TrackingInput = pointerInput
@@ -116,6 +125,32 @@ async function enableHandMode() {
   }
 }
 
+async function loadDefaultMural() {
+  try {
+    await renderer.setDefaultImage(DEFAULT_MURAL_URL)
+    trackingStatus.textContent = `${DEFAULT_MURAL_NAME} loaded. Hold near an edge to navigate.`
+  } catch (error) {
+    console.error(error)
+    trackingStatus.textContent = 'Pointer mode'
+  }
+}
+
+async function importMural(file: File) {
+  importMuralButton.disabled = true
+  trackingStatus.textContent = 'Generating monochrome line-art layer...'
+
+  try {
+    await renderer.importColorImage(file)
+    trackingStatus.textContent = `Imported mural: ${file.name}. Hold near an edge to navigate.`
+  } catch (error) {
+    console.error(error)
+    trackingStatus.textContent = error instanceof Error ? error.message : 'Failed to import mural image'
+  } finally {
+    importMuralButton.disabled = false
+    muralFileInput.value = ''
+  }
+}
+
 function renderLoop() {
   updateRendererConfig()
   renderer.render()
@@ -131,9 +166,17 @@ wireInput(handInput)
 handToggle.addEventListener('click', () => {
   void (handTrackingEnabled ? enablePointerMode() : enableHandMode())
 })
+importMuralButton.addEventListener('click', () => {
+  muralFileInput.click()
+})
+muralFileInput.addEventListener('change', () => {
+  const file = muralFileInput.files?.[0]
+  if (file) void importMural(file)
+})
 window.addEventListener('resize', resize)
 window.addEventListener('beforeunload', () => activeInput.stop())
 
 resize()
+void loadDefaultMural()
 void enablePointerMode()
 renderLoop()
