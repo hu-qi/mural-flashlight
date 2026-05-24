@@ -8,7 +8,10 @@ import { CanvasMapper } from '../mapping/CanvasMapper'
 import type { StatusCallback, TrackingInput, TrackingPointCallback } from '../types'
 import { PointSmoother } from '../utils/smoother'
 
-const HAND_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm'
+const HAND_WASM_URLS = [
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+  'https://unpkg.com/@mediapipe/tasks-vision@latest/wasm',
+]
 const HAND_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
 
@@ -37,18 +40,7 @@ export class MediaPipeHandInput implements TrackingInput {
 
     try {
       if (!this.handLandmarker) {
-        const vision = await FilesetResolver.forVisionTasks(HAND_WASM_URL)
-        this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: HAND_MODEL_URL,
-            delegate: 'GPU',
-          },
-          runningMode: 'VIDEO',
-          numHands: 1,
-          minHandDetectionConfidence: 0.55,
-          minHandPresenceConfidence: 0.55,
-          minTrackingConfidence: 0.55,
-        })
+        this.handLandmarker = await this.createHandLandmarker()
       }
 
       this.cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -111,6 +103,34 @@ export class MediaPipeHandInput implements TrackingInput {
 
   onStatus(callback: StatusCallback) {
     this.statusCallback = callback
+  }
+
+  private async createHandLandmarker() {
+    let lastError: unknown = null
+
+    for (const wasmUrl of HAND_WASM_URLS) {
+      try {
+        this.statusCallback(`Loading MediaPipe wasm from ${new URL(wasmUrl).hostname}...`)
+        const vision = await FilesetResolver.forVisionTasks(wasmUrl)
+
+        return await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: HAND_MODEL_URL,
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 1,
+          minHandDetectionConfidence: 0.55,
+          minHandPresenceConfidence: 0.55,
+          minTrackingConfidence: 0.55,
+        })
+      } catch (error) {
+        console.warn(`MediaPipe wasm load failed from ${wasmUrl}`, error)
+        lastError = error
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Unable to load MediaPipe wasm assets')
   }
 
   private runLoop() {
