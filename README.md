@@ -22,6 +22,36 @@ Notes:
 - The fingertip point is smoothed before driving the flashlight to reduce jitter.
 - Browsers require HTTPS or localhost for camera access.
 
+## Step 3: modular tracking architecture
+
+The code is now split into three layers so AprilTag can be added as another input source later:
+
+```text
+src/
+  main.ts                      # app bootstrap and mode switching
+  types.ts                     # TrackingPoint / TrackingInput contracts
+  renderer/MuralRenderer.ts    # mural drawing, reveal mask, glow, debug overlay
+  inputs/PointerInput.ts       # mouse / touch / pen tracking adapter
+  inputs/MediaPipeHandInput.ts # MediaPipe Hands tracking adapter
+  mapping/CanvasMapper.ts      # input coordinates -> canvas coordinates
+  utils/smoother.ts            # jitter smoothing helper
+```
+
+Every input adapter emits the same `TrackingPoint` shape:
+
+```ts
+{
+  x: number
+  y: number
+  confidence: number
+  active: boolean
+  source: 'pointer' | 'mediapipe-hand' | 'apriltag'
+  label?: string
+}
+```
+
+The renderer only consumes tracking points. It does not know whether the point came from a mouse, a hand landmark, or a future AprilTag detector.
+
 ## Run locally
 
 ```bash
@@ -48,5 +78,5 @@ Then open the local Vite URL in a browser.
 ## Planned next steps
 
 1. Add gesture-based flashlight activation, for example pinch to turn on.
-2. Replace MediaPipe with AprilTag tracking for a physical flashlight prop.
+2. Add an `AprilTagInput` adapter that emits the same `TrackingPoint` interface.
 3. Add four-point calibration for camera-to-screen coordinate mapping.
