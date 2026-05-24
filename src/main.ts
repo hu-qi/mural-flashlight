@@ -32,33 +32,36 @@ app.innerHTML = `
     <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
     <canvas id="mural-canvas" aria-label="Interactive mural flashlight demo"></canvas>
 
-    <section class="hud" aria-label="Controls">
-      <div>
-        <p class="eyebrow">Step 3 / Modular Tracking</p>
-        <h1>Mural Flashlight</h1>
-        <p class="hint">The demo starts with a long mural. Hold the flashlight near a screen edge to auto-navigate that direction; the minimap shows your global position.</p>
+    <details class="hud" aria-label="Controls">
+      <summary class="hud-summary">
+        <span class="hud-brand">Mural Flashlight</span>
+        <span id="tracking-status" class="hud-status">Loading default mural...</span>
+        <span class="hud-settings">Settings</span>
+      </summary>
+
+      <div class="hud-panel">
+        <p class="hint">Move the flashlight to reveal color. Hold near edges to explore the long mural.</p>
+
+        <div class="mode-row">
+          <button id="hand-toggle" type="button">Start hand tracking</button>
+        </div>
+
+        <label>
+          <span>Radius</span>
+          <input id="radius" type="range" min="80" max="320" value="185" />
+        </label>
+
+        <label>
+          <span>Feather</span>
+          <input id="feather" type="range" min="25" max="190" value="95" />
+        </label>
+
+        <label>
+          <span>Glow</span>
+          <input id="intensity" type="range" min="0" max="100" value="90" />
+        </label>
       </div>
-
-      <div class="mode-row">
-        <button id="hand-toggle" type="button">Start hand tracking</button>
-        <span id="tracking-status">Loading default mural...</span>
-      </div>
-
-      <label>
-        <span>Radius</span>
-        <input id="radius" type="range" min="80" max="320" value="185" />
-      </label>
-
-      <label>
-        <span>Feather</span>
-        <input id="feather" type="range" min="25" max="190" value="95" />
-      </label>
-
-      <label>
-        <span>Glow</span>
-        <input id="intensity" type="range" min="0" max="100" value="90" />
-      </label>
-    </section>
+    </details>
   </main>
 `
 
@@ -128,7 +131,7 @@ async function enableHandMode() {
 async function loadDefaultMural() {
   try {
     await renderer.setDefaultImage(DEFAULT_MURAL_URL)
-    trackingStatus.textContent = `${DEFAULT_MURAL_NAME} loaded. Hold near an edge to navigate.`
+    trackingStatus.textContent = `${DEFAULT_MURAL_NAME} loaded · Edge explore ready`
   } catch (error) {
     console.error(error)
     trackingStatus.textContent = 'Pointer mode'
@@ -137,11 +140,11 @@ async function loadDefaultMural() {
 
 async function importMural(file: File) {
   importMuralButton.disabled = true
-  trackingStatus.textContent = 'Generating monochrome line-art layer...'
+  trackingStatus.textContent = 'Generating line-art layer...'
 
   try {
     await renderer.importColorImage(file)
-    trackingStatus.textContent = `Imported mural: ${file.name}. Hold near an edge to navigate.`
+    trackingStatus.textContent = `Imported: ${file.name}`
   } catch (error) {
     console.error(error)
     trackingStatus.textContent = error instanceof Error ? error.message : 'Failed to import mural image'
