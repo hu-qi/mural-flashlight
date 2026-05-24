@@ -2,6 +2,8 @@
 
 A browser-based interactive mural prototype that simulates a handheld flashlight revealing a colored layer inside a monochrome ink mural.
 
+[中文文档](REDME-zh.md)
+
 ![Mural Flashlight Screenshot](docs/screenshot.png)
 
 ## Inspiration
