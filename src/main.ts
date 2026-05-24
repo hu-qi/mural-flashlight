@@ -5,14 +5,24 @@ import { CanvasMapper } from './mapping/CanvasMapper'
 import { MuralRenderer } from './renderer/MuralRenderer'
 import type { TrackingInput, TrackingPoint } from './types'
 
-const app = document.querySelector<HTMLDivElement>('#app')
+function queryRequired<T extends Element>(selector: string) {
+  const element = document.querySelector<T>(selector)
 
-if (!app) {
-  throw new Error('Missing #app root element')
+  if (!element) {
+    throw new Error(`Missing required element: ${selector}`)
+  }
+
+  return element
 }
+
+const app = queryRequired<HTMLDivElement>('#app')
 
 app.innerHTML = `
   <main class="stage-shell">
+    <a class="source-link" href="https://github.com/hu-qi/mural-flashlight" target="_blank" rel="noreferrer">
+      Source ↗
+    </a>
+
     <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
     <canvas id="mural-canvas" aria-label="Interactive mural flashlight demo"></canvas>
 
@@ -46,17 +56,13 @@ app.innerHTML = `
   </main>
 `
 
-const canvas = document.querySelector<HTMLCanvasElement>('#mural-canvas')
-const video = document.querySelector<HTMLVideoElement>('#camera-video')
-const radiusInput = document.querySelector<HTMLInputElement>('#radius')
-const featherInput = document.querySelector<HTMLInputElement>('#feather')
-const intensityInput = document.querySelector<HTMLInputElement>('#intensity')
-const handToggle = document.querySelector<HTMLButtonElement>('#hand-toggle')
-const trackingStatus = document.querySelector<HTMLSpanElement>('#tracking-status')
-
-if (!canvas || !video || !radiusInput || !featherInput || !intensityInput || !handToggle || !trackingStatus) {
-  throw new Error('Missing required UI elements')
-}
+const canvas = queryRequired<HTMLCanvasElement>('#mural-canvas')
+const video = queryRequired<HTMLVideoElement>('#camera-video')
+const radiusInput = queryRequired<HTMLInputElement>('#radius')
+const featherInput = queryRequired<HTMLInputElement>('#feather')
+const intensityInput = queryRequired<HTMLInputElement>('#intensity')
+const handToggle = queryRequired<HTMLButtonElement>('#hand-toggle')
+const trackingStatus = queryRequired<HTMLSpanElement>('#tracking-status')
 
 const mapper = new CanvasMapper(canvas)
 const renderer = new MuralRenderer(canvas)
